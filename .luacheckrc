@@ -22,6 +22,8 @@ read_globals = {
     "UnitFactionGroup",
     "UnitGUID",
     "UnitName",
+    "UnitPosition",
+    "time",
     "geterrorhandler",
     "hooksecurefunc",
 
@@ -59,6 +61,8 @@ read_globals = {
 
 globals = {
     "LocateVendorDB",
+    "SLASH_LOCATEVENDOR1",
+    "SLASH_LOCATEVENDOR2",
     "SlashCmdList",
 }
 

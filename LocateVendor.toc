@@ -3,7 +3,7 @@
 ## Notes: Shows which vendors sell the recipes listed by What's Training?
 ## Notes-ruRU: Показывает торговцев, продающих рецепты из What's Training?
 ## Author: vladimir-s22
-## Version: 0.2.0
+## Version: 0.3.0
 ## Dependencies: WhatsTraining
 ## OptionalDeps: TomTom
 ## SavedVariables: LocateVendorDB
@@ -13,10 +13,12 @@ Data\Vendors.lua
 NpcNames.lua
 VendorFilter.lua
 Coordinates.lua
+Collector.lua
 Format.lua
 Waypoint.lua
 VendorMenu.lua
 RowClick.lua
 Bridge.lua
 Tooltip.lua
+Commands.lua
 LocateVendor.lua

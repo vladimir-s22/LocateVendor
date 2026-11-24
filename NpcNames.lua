@@ -48,14 +48,13 @@ local function retry(npcId, attempt)
     end
 end
 
--- Binds the cache stored in LocateVendorDB; the cache is dropped whenever the client build changes.
-function NpcNames.Init()
-    if type(LocateVendorDB) ~= "table" then LocateVendorDB = {} end
+-- Binds the name cache inside the saved variables table; it is dropped whenever the client build changes.
+function NpcNames.Init(db)
     local build = select(2, GetBuildInfo())
-    local cache = LocateVendorDB.npcNames
+    local cache = db.npcNames
     if type(cache) ~= "table" or cache.build ~= build or type(cache.locales) ~= "table" then
         cache = { build = build, locales = {} }
-        LocateVendorDB.npcNames = cache
+        db.npcNames = cache
     end
     local locale = GetLocale()
     if type(cache.locales[locale]) ~= "table" then cache.locales[locale] = {} end
