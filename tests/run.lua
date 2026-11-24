@@ -14,14 +14,18 @@ end
 
 -- Builds a fresh mocked client and loads the addon into it. options:
 --   locale, faction, build, savedDB, creatureNames (npcId -> name), nameDelayQueries (npcId -> misses before name),
---   tomtom (false: not installed), noSetEnabled (menu elements without SetEnabled), supportsCleared
+--   tomtom (false: not installed), noSetEnabled (menu elements without SetEnabled), supportsCleared,
+--   noUnitPosition (client without UnitPosition)
 local function newClient(options)
     options = options or {}
     local env = setmetatable({}, { __index = _G })
     env._G = env
     local timers, frames = {}, {}
     local state = { now = 0, timers = timers, queries = {}, setSpellCalls = 0, sounds = 0, menus = {},
-        modifiers = {} }
+        modifiers = {}, chat = {} }
+    env.print = function(message) table.insert(state.chat, message) end
+    env.SlashCmdList = {}
+    env.time = function() return 1764000000 + math.floor(state.now) end
 
     env.GetLocale = function() return options.locale or "ruRU" end
     env.GetBuildInfo = function() return "1.60.1", options.build or "71037", "", 16001 end
@@ -73,8 +77,47 @@ local function newClient(options)
     env.C_Map = { GetAreaInfo = function(areaId)
         return ({ [40] = "Западный Край", [38] = "Лок Модан", [17] = "Степи", [1637] = "Оргриммар",
             [267] = "Предгорья Хилсбрада", [331] = "Ясеневый лес", [1519] = "Штормград", [1657] = "Дарнас",
-            [1537] = "Стальгорн", [1377] = "Силитус", [16593] = "Остров Зефрис" })[areaId]
+            [1537] = "Стальгорн", [1377] = "Силитус", [16593] = "Остров Зефрис", [11] = "Болотина",
+            [130] = "Серебряный бор", [10] = "Сумеречный лес", [12] = "Элвиннский лес", [215] = "Мулгор" })[areaId]
     end }
+
+    -- where the player stands and which merchant window is open
+    state.player = { uiMapId = 1453, mapType = 3, x = 0.5301, y = 0.7421,
+        world = { x = -8800, y = 600, instance = 0 }, inInstance = false, zone = "Штормград" }
+    state.recipeItems = {}
+    function env.C_Map.GetBestMapForUnit() return state.player.uiMapId end
+    function env.C_Map.GetMapInfo(uiMapId) return uiMapId and { mapID = uiMapId, mapType = state.player.mapType } end
+    function env.C_Map.GetPlayerMapPosition()
+        if not state.player.x then return nil end
+        return { GetXY = function() return state.player.x, state.player.y end }
+    end
+    if not options.noUnitPosition then
+        env.UnitPosition = function()
+            local world = state.player.world
+            if not world then return nil end
+            return world.y, world.x, 0, world.instance
+        end
+    end
+    env.IsInInstance = function() return state.player.inInstance, state.player.inInstance and "party" or "none" end
+    env.GetRealZoneText = function() return state.player.zone end
+    env.UnitGUID = function(unit) return unit == "npc" and state.merchant and state.merchant.guid or nil end
+    env.UnitName = function(unit) return unit == "npc" and state.merchant and state.merchant.name or nil end
+    env.GetMerchantNumItems = function() return state.merchant and #state.merchant.items or 0 end
+    env.GetMerchantItemID = function(index)
+        local itemId = state.merchant and state.merchant.items[index]
+        return itemId or nil
+    end
+    env.C_Item = { GetItemInfoInstant = function(itemId)
+        return itemId, "", "", "", 0, state.recipeItems[itemId] and 9 or 15, 0
+    end }
+    env.strsplit = function(separator, text)
+        local parts = {}
+        for part in (text .. separator):gmatch("(.-)" .. separator:gsub("%p", "%%%0")) do
+            table.insert(parts, part)
+        end
+        return unpack(parts)
+    end
+    env.tremove = table.remove
 
     env.IsShiftKeyDown = function() return state.modifiers.shift == true end
     env.IsControlKeyDown = function() return state.modifiers.ctrl == true end
@@ -122,10 +165,11 @@ local function newClient(options)
 
     -- frames and the tooltip
     local function newFrame(parent)
-        local frame = { parent = parent, scripts = {} }
+        local frame = { parent = parent, scripts = {}, events = {} }
         function frame.GetParent(self) return self.parent end
-        function frame.RegisterEvent() end
-        function frame.UnregisterEvent() end
+        function frame.RegisterEvent(self, event) self.events[event] = true end
+        function frame.UnregisterEvent(self, event) self.events[event] = nil end
+        function frame.UnregisterAllEvents(self) self.events = {} end
         function frame.SetScript(self, name, fn) self.scripts[name] = fn end
         frame.hooks = {}
         function frame.HookScript(self, name, fn)
@@ -138,7 +182,7 @@ local function newClient(options)
     env.CreateFrame = function() return newFrame(nil) end
 
     local postCalls = {}
-    env.Enum = { TooltipDataType = { Spell = 1, Item = 0 } }
+    env.Enum = { TooltipDataType = { Spell = 1, Item = 0 }, ItemClass = { Recipe = 9 }, UIMapType = { Zone = 3 } }
     env.TooltipDataProcessor = { AddTooltipPostCall = function(tooltipType, fn)
         table.insert(postCalls, { type = tooltipType, fn = fn })
     end }
@@ -221,9 +265,32 @@ local function newClient(options)
         setfenv(chunk, env)
         chunk("LocateVendor", ns)
     end
-    for _, frame in ipairs(frames) do
-        if frame.scripts.OnEvent then frame.scripts.OnEvent(frame, "ADDON_LOADED", "LocateVendor") end
+    function state.fire(event, ...)
+        local registered = {}
+        for _, frame in ipairs(frames) do
+            if frame.events[event] and frame.scripts.OnEvent then table.insert(registered, frame) end
+        end
+        for _, frame in ipairs(registered) do frame.scripts.OnEvent(frame, event, ...) end
     end
+    state.fire("ADDON_LOADED", "LocateVendor")
+    state.fire("PLAYER_LOGIN")
+
+    function state.slash(input) env.SlashCmdList.LOCATEVENDOR(input) end
+    -- opens a merchant window and keeps it open; close() ends the visit
+    function state.openMerchant(merchant)
+        state.merchant = merchant
+        state.fire("MERCHANT_SHOW")
+    end
+    function state.closeMerchant()
+        state.fire("MERCHANT_CLOSED")
+        state.merchant = nil
+    end
+    function state.visit(merchant)
+        state.openMerchant(merchant)
+        state.closeMerchant()
+    end
+    function state.lastChat() return state.chat[#state.chat] or "" end
+    function state.chatText() return table.concat(state.chat, "\n") end
 
     state.env, state.ns, state.tooltip, state.postCalls = env, ns, tooltip, postCalls
     return state
@@ -642,6 +709,280 @@ do -- invalid coordinates count as missing
     check(not get(1685) and not get(4228) and not get(5158) and not get(15419) and not get(257004),
         "out-of-range, zero map, missing axis, fractional map and edge values rejected")
     check(get(1318) == 1453, "verified entry accepted")
+end
+
+-- Milestone 3: Collector ------------------------------------------------------------------
+
+local JESSARA_ITEMS = { 20758, 20752, 20753, 6342, 22307 }
+local function jessara(items)
+    return { guid = "Creature-0-46407-0-34268-1318-8E109C3659", name = "Джессара Корделл",
+        items = items or { 20758, 20752, 20753, 6342, 22307, 10940, 10938, 6217, 5060, 2678 } }
+end
+local function vendor(npcId, name, items)
+    return { guid = "Creature-0-1-0-1-" .. npcId .. "-0000000001", name = name, items = items }
+end
+local function collectingClient(options)
+    local client = newClient(options)
+    for _, itemId in ipairs(JESSARA_ITEMS) do client.recipeItems[itemId] = true end
+    client.recipeItems[5640] = true
+    client.slash("collect")
+    return client
+end
+local function collected(client, npcId) return client.env.LocateVendorDB.collector.vendors[npcId] end
+
+do -- collection is off by default and toggles with /lv collect
+    local client = newClient()
+    client.recipeItems[20758] = true
+    client.visit(jessara())
+    check(next(client.env.LocateVendorDB.collector.vendors) == nil and #client.chat == 0, "off: nothing recorded")
+    client.slash("collect")
+    check(client.lastChat():find("сбор координат включён", 1, true), "enabled message")
+    client.slash("collect")
+    check(client.lastChat():find("сбор координат выключен", 1, true), "disabled message")
+    client.visit(jessara())
+    check(next(client.env.LocateVendorDB.collector.vendors) == nil, "off again: nothing recorded")
+    client.slash("")
+    check(client.lastChat():find("/lv collect", 1, true), "help text")
+end
+
+do -- first sample at Jessara: recorded, compared with the verified point, verified point untouched
+    local client = collectingClient()
+    client.visit(jessara())
+    local record = collected(client, 1318)
+    check(record and record.uiMapId == 1453 and record.x == 53.01 and record.y == 74.21 and record.samples == 1,
+        "sample recorded at 1453 53.01, 74.21")
+    check(#record.recipes == 5 and record.recipes[1] == 6342, "only recipe items kept, sorted")
+    check(record.name == "Джессара Корделл" and record.zone == "Штормград" and record.build == "71037",
+        "name, zone and build recorded")
+    check(client.chatText():find("записан Джессара Корделл (1318): Штормград 53.01, 74.21; рецептов: 5", 1, true),
+        "recorded message")
+    check(client.lastChat():find("проверенная точка не изменена; замер отличается от неё на 0.00", 1, true),
+        "distance to the verified point reported")
+    local verified = client.ns.VendorData[1318]
+    check(verified.uiMapId == 1453 and verified.x == 53.01 and verified.y == 74.21, "Data/Vendors.lua untouched")
+end
+
+do -- a sample far from the verified point warns but never replaces it
+    local client = collectingClient()
+    client.player.x = 0.56
+    client.visit(jessara())
+    check(client.lastChat():find("проверьте", 1, true), "warning about the verified point")
+    local uiMapId, x, y = client.ns.Coordinates.Get(1318)
+    check(uiMapId == 1453 and x == 53.01 and y == 74.21, "verified point still wins")
+    check(client.ns.Coordinates.GetCollected(1318) ~= nil, "collected point exists separately")
+end
+
+do -- a close repeated sample confirmed by UnitPosition is averaged
+    local client = collectingClient()
+    client.visit(jessara())
+    client.player.x, client.player.world = 0.5305, { x = -8803, y = 604, instance = 0 } -- 5 yd away
+    client.visit(jessara())
+    local record = collected(client, 1318)
+    check(record.samples == 2 and record.x == 53.03 and record.y == 74.21, "averaged to 53.03, 74.21")
+    check(not record.conflicts, "no conflict for a close sample")
+    check(client.chatText():find("замер 2", 1, true), "merge message")
+end
+
+do -- a far sample becomes a conflict and disables the collected point
+    local client = collectingClient()
+    client.visit(jessara())
+    client.player.x, client.player.world = 0.5501, { x = -8840, y = 600, instance = 0 } -- 40 yd away
+    client.visit(jessara())
+    local record = collected(client, 1318)
+    check(record.samples == 1 and record.x == 53.01, "saved point unchanged")
+    check(record.conflicts and record.conflicts[1].reason == "far" and math.abs(record.conflicts[1].yards - 40) < 1e-6,
+        "far conflict with distance")
+    check(client.ns.Coordinates.GetCollected(1318) == nil, "conflicted point not used")
+end
+
+do -- another map, or another continent, is a conflict
+    local client = collectingClient()
+    client.visit(jessara())
+    client.player.uiMapId = 1429
+    client.visit(jessara())
+    check(collected(client, 1318).conflicts[1].reason == "map", "other map conflict")
+
+    local continent = collectingClient()
+    continent.visit(jessara())
+    continent.player.world = { x = -8800, y = 600, instance = 1 }
+    continent.visit(jessara())
+    check(collected(continent, 1318).conflicts[1].reason == "unverified", "other continent cannot be confirmed")
+end
+
+do -- without UnitPosition nothing is averaged: repeats go to conflicts
+    local client = collectingClient({ noUnitPosition = true })
+    client.visit(jessara())
+    check(client.ns.Coordinates.GetCollected(1318) ~= nil, "first sample usable")
+    client.visit(jessara()) -- even the very same spot cannot be confirmed
+    local record = collected(client, 1318)
+    check(record.samples == 1 and record.conflicts[1].reason == "unverified", "unverified conflict, no averaging")
+    check(client.ns.Coordinates.GetCollected(1318) == nil, "point not used after an unconfirmed repeat")
+end
+
+do -- conflicts are capped
+    local client = collectingClient()
+    client.visit(jessara())
+    client.player.uiMapId = 1429
+    for _ = 1, 8 do client.visit(jessara()) end
+    check(#collected(client, 1318).conflicts == 5, "at most five conflicts kept")
+end
+
+do -- ordinary vendors and non-NPC merchants are never recorded
+    local client = collectingClient()
+    client.visit(vendor(1257, "Кельдрик Бун", { 159, 1179, 4540 }))
+    check(collected(client, 1257) == nil and client.lastChat():find("рецептов не продаёт", 1, true),
+        "vendor without recipes skipped")
+    client.visit({ guid = "Player-1234-0ABCDEF0", name = "Игрок", items = { 20758 } })
+    check(client.lastChat():find("не является NPC", 1, true), "player merchant skipped")
+    client.visit({ guid = "GameObject-0-1-0-1-1318-0000000001", name = "Ящик", items = { 20758 } })
+    local count = 0
+    for _ in pairs(client.env.LocateVendorDB.collector.vendors) do count = count + 1 end
+    check(count == 0, "no false records")
+end
+
+do -- instance vendors keep recipes but never offer coordinates
+    local client = collectingClient()
+    client.player.inInstance = true
+    client.visit(vendor(12944, "Локтос", { 5640 }))
+    local record = collected(client, 12944)
+    check(record and record.instance and record.x == nil and record.recipes[1] == 5640, "instance record")
+    check(client.ns.Coordinates.Get(12944) == nil, "no waypoint for an instance vendor")
+    check(client.lastChat():find("в подземелье", 1, true), "instance message")
+end
+
+do -- map type and position checks
+    local client = collectingClient()
+    client.player.mapType = 5
+    client.visit(jessara())
+    check(collected(client, 1318) == nil and client.lastChat():find("тип карты 5", 1, true), "micro map rejected")
+    client.player.mapType, client.player.x = 3, nil
+    client.visit(jessara())
+    check(collected(client, 1318) == nil and client.lastChat():find("нет позиции", 1, true), "missing position")
+    client.player.x, client.player.y = 1.0, 0.5
+    client.visit(jessara())
+    check(collected(client, 1318) == nil, "position on the map edge rejected")
+end
+
+do -- items still loading: capture waits for MERCHANT_UPDATE and happens once
+    local client = collectingClient()
+    local merchant = jessara({ false, false })
+    client.openMerchant(merchant)
+    check(collected(client, 1318) == nil and #client.chat == 1, "no verdict while items load")
+    merchant.items = { 20758, 159 }
+    client.fire("MERCHANT_UPDATE")
+    check(collected(client, 1318) and collected(client, 1318).samples == 1, "captured after update")
+    client.fire("MERCHANT_UPDATE")
+    check(collected(client, 1318).samples == 1, "one sample per window")
+    client.closeMerchant()
+
+    local late = collectingClient()
+    merchant = jessara({ 20758, false })
+    late.openMerchant(merchant)
+    merchant.items = { 20758, 20752 }
+    late.fire("MERCHANT_UPDATE")
+    late.closeMerchant()
+    local record = collected(late, 1318)
+    check(record.samples == 1 and #record.recipes == 2, "late recipes merged without a new sample")
+end
+
+do -- collected points drive waypoints, conflicts and instances do not
+    local client = collectingClient({ creatureNames = { [1685] = "Ксаварик" } })
+    client.recipeItems[6053] = true
+    client.player.uiMapId, client.player.x, client.player.y = 1432, 0.3550, 0.4880
+    client.visit(vendor(1685, "Ксаварик", { 6053 }))
+    local row = setupRow(client, RECIPE_ONE_NO_COORDS)
+    check(text(client.tooltip):find("ЛКМ: поставить метку", 1, true), "single collected vendor: waypoint hint")
+    client.click(row, "LeftButton")
+    local uid = client.tomtom:list()[1]
+    check(uid and uid[1] == 1432 and math.abs(uid[2] - 0.355) < 1e-9, "waypoint at the collected point")
+end
+
+do -- collection mode, records and the login reminder survive a reload; names reset per build only
+    local client = collectingClient()
+    client.visit(jessara())
+    local db = client.env.LocateVendorDB
+    local reloaded = newClient({ savedDB = db })
+    check(reloaded.ns.Collector.IsEnabled(), "collection still on after reload")
+    check(reloaded.chat[1] and reloaded.chat[1]:find("сбор координат включён", 1, true), "login reminder")
+    local patched = newClient({ savedDB = db, build = "72000" })
+    check(patched.env.LocateVendorDB.collector.vendors[1318] ~= nil, "records kept after a build change")
+    local quiet = newClient()
+    check(#quiet.chat == 0, "no reminder when collection is off")
+end
+
+do -- corrupted saved records are ignored
+    local client = collectingClient()
+    local vendors = client.env.LocateVendorDB.collector.vendors
+    vendors[1685] = { uiMapId = 1432, x = 200, y = 40 }
+    vendors[4228] = { uiMapId = "1457", x = 40, y = 40 }
+    vendors[5158] = "broken"
+    check(not client.ns.Coordinates.Get(1685) and not client.ns.Coordinates.Get(4228)
+        and not client.ns.Coordinates.Get(5158), "invalid collected records give no coordinates")
+    client.slash("status")
+    check(client.lastChat():find("торговцев: 3 (точек для меток: 0", 1, true), "status survives broken records")
+end
+
+do -- status summary
+    local client = collectingClient()
+    client.visit(jessara())
+    client.player.inInstance = true
+    client.visit(vendor(12944, "Локтос", { 5640 }))
+    client.slash("status")
+    check(client.lastChat():find("сбор: вкл; торговцев: 2 (точек для меток: 1, в подземельях: 1, с конфликтами: 0)",
+        1, true), "status counts: " .. client.lastChat())
+end
+
+-- Wandering vendors (`areas` in WT data) ---------------------------------------------------
+
+-- vendors as in WT's Camelot Tailoring recipe 1257013, trimmed
+local RECIPE_WANDERING = { spell = 1257013, source = { "vendor" }, vendors = {
+    { npc = 1347, area = 1519, faction = "Alliance" }, { npc = 2394, area = 267, faction = "Horde" },
+    { npc = 242498, areas = { 40, 38, 17, -1 } }, { npc = 254695, areas = { 11, 130, 10, -1 } } } }
+local WANDERING_NAMES = { [1347] = "Александра Болеро", [242498] = "Реагентобот", [254695] = "Ремонтный робот" }
+
+do -- every zone is listed like WT does, ids <= 0 skipped, and the vendor is marked
+    local client = newClient({ creatureNames = WANDERING_NAMES })
+    setupRow(client, RECIPE_WANDERING)
+    local shown = text(client.tooltip)
+    check(shown:find("Реагентобот|r |cffb0b0b0— Западный Край, Лок Модан, Степи (перемещается)", 1, true),
+        "wandering zones listed and marked")
+    check(shown:find("Болотина, Серебряный бор, Сумеречный лес (перемещается)", 1, true), "second wandering vendor")
+    check(not shown:find("Неизвестная зона", 1, true), "no unknown zone")
+end
+
+do -- wandering vendors never get a waypoint, even with a collected or verified point
+    local client = collectingClient({ creatureNames = WANDERING_NAMES })
+    client.recipeItems[5640] = true
+    client.player.uiMapId, client.player.x, client.player.y = 1436, 0.5, 0.5
+    client.visit(vendor(242498, "Реагентобот", { 5640 }))
+    client.ns.VendorData[254695] = { uiMapId = 1431, x = 40, y = 40 }
+    check(client.env.LocateVendorDB.collector.vendors[242498] ~= nil, "Collector still records it")
+    local row = setupRow(client, RECIPE_WANDERING)
+    check(not text(client.tooltip):find("ЛКМ", 1, true), "no hint: no navigable vendor")
+    check(not text(client.tooltip):find("INV_Misc_Map_01", 1, true), "no map icon for wandering vendors")
+    client.click(row, "LeftButton")
+    check(#client.menus == 0 and #client.tomtom:list() == 0, "click does nothing")
+end
+
+do -- in a menu a wandering vendor is greyed and disabled with its own mark only
+    local client = newClient({ creatureNames = WANDERING_NAMES })
+    client.ns.VendorData[1347] = { uiMapId = 1453, x = 51.5, y = 60.2 }
+    local row = setupRow(client, RECIPE_WANDERING)
+    check(text(client.tooltip):find("ЛКМ: выбрать торговца", 1, true), "menu hint thanks to the city vendor")
+    client.click(row, "LeftButton")
+    local entries = buttons(client.lastMenu())
+    check(#entries == 3 and entries[1].enabled, "city vendor first and enabled")
+    for index = 2, 3 do
+        local entry = entries[index]
+        check(not entry.enabled and entry.text:find("(перемещается)", 1, true)
+            and not entry.text:find("координаты не собраны", 1, true), "wandering entry " .. index)
+    end
+end
+
+do -- `areas` with nothing usable still marks the vendor as wandering
+    local client = newClient({ creatureNames = { [14828] = "Гелвас" } })
+    setupRow(client, { spell = 9104, source = { "vendor" }, vendors = { { npc = 14828, areas = { -1 } } } })
+    check(text(client.tooltip):find("Неизвестная зона (перемещается)", 1, true), "unknown zone, still wandering")
 end
 
 print(string.format("%d passed, %d failed", passed, failures))
