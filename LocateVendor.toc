@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: LocateVendor
+## Notes: Shows which vendors sell the recipes listed by What's Training?
+## Notes-ruRU: Показывает торговцев, продающих рецепты из What's Training?
+## Author: vladimir-s22
+## Version: 0.1.0
+## Dependencies: WhatsTraining
+## SavedVariables: LocateVendorDB
+
+Locales.lua
+NpcNames.lua
+VendorFilter.lua
+Bridge.lua
+Tooltip.lua
+LocateVendor.lua
