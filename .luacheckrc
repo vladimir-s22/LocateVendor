@@ -1,0 +1,65 @@
+std = "lua51"
+max_line_length = 120
+
+read_globals = {
+    -- api functions
+    "CreateFrame",
+    "GetBuildInfo",
+    "GetItemInfoInstant",
+    "GetLocale",
+    "GetMerchantItemID",
+    "GetMerchantItemLink",
+    "GetMerchantNumItems",
+    "GetMouseFoci",
+    "GetMouseFocus",
+    "GetRealZoneText",
+    "GetSubZoneText",
+    "IsInInstance",
+    "UnitFactionGroup",
+    "UnitGUID",
+    "UnitName",
+    "geterrorhandler",
+    "hooksecurefunc",
+
+    -- function aliases
+    "date",
+    "strsplit",
+    "tinsert",
+    "tremove",
+
+    -- namespaces
+    "C_Item",
+    "C_Map",
+    "C_Timer",
+    "C_TooltipInfo",
+    "MenuUtil",
+    "TooltipDataProcessor",
+
+    -- enums and constants
+    "Enum",
+    "LE_ITEM_CLASS_RECIPE",
+    "UNKNOWNOBJECT",
+    "WOW_PROJECT_ID",
+
+    -- blizzard frames
+    "GameTooltip",
+    "UIParent",
+
+    -- other addons
+    "TomTom",
+    "WT_API",
+    "WT_WaypointProvider",
+    "WhatsTrainingCraftingScrollBox",
+}
+
+globals = {
+    "LocateVendorDB",
+    "SlashCmdList",
+}
+
+files["tools/LocateVendorProbe/"] = {
+    globals = {
+        "LocateVendorProbeLog",
+        "SLASH_LOCATEVENDORPROBE1",
+    },
+}

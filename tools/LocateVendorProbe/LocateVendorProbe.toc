@@ -1,0 +1,7 @@
+## Interface: 20506, 16001, 11509
+## Title: LocateVendor Probe
+## Notes: Throwaway in-game API probe for LocateVendor development. Not for release.
+## OptionalDeps: TomTom, WhatsTraining
+## SavedVariables: LocateVendorProbeLog
+
+Probe.lua
