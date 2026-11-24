@@ -10,6 +10,7 @@ local strings = {
         HINT_WAYPOINT = "Click: set a waypoint",
         HINT_MENU = "Click: choose a vendor",
         NO_COORDINATES = "coordinates not collected",
+        WANDERING = "moves around",
 
         HELP = "/lv collect: turn coordinate collection on or off; /lv status: collection summary",
         COLLECT_ENABLED = "coordinate collection is on: open vendor windows to record their positions",
@@ -46,6 +47,7 @@ local strings = {
         HINT_WAYPOINT = "ЛКМ: поставить метку",
         HINT_MENU = "ЛКМ: выбрать торговца",
         NO_COORDINATES = "координаты не собраны",
+        WANDERING = "перемещается",
 
         HELP = "/lv collect: включить или выключить сбор координат; /lv status: сводка сбора",
         COLLECT_ENABLED = "сбор координат включён: открывайте окна торговцев, чтобы записать их позиции",

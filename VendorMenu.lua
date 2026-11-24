@@ -32,7 +32,9 @@ function VendorMenu.Open(owner, title, vendors, onSelect)
             if vendor.uiMapId then
                 root:CreateButton(Format.MAP_ICON .. " " .. text, function() onSelect(vendor) end)
             else
-                local label = Format.Colorize(text .. " (" .. L.NO_COORDINATES .. ")", UNAVAILABLE_COLOR)
+                -- a wandering vendor already carries its own mark in the zone text
+                if not vendor.isWandering then text = text .. " (" .. L.NO_COORDINATES .. ")" end
+                local label = Format.Colorize(text, UNAVAILABLE_COLOR)
                 local button = root:CreateButton(label, ignoreClick)
                 if button and button.SetEnabled then button:SetEnabled(false) end
             end

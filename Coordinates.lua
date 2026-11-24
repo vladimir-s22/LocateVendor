@@ -37,10 +37,14 @@ function Coordinates.Get(npcId)
 end
 
 -- Adds uiMapId, x and y to every vendor that has valid coordinates; returns how many have them.
+-- A wandering vendor never gets coordinates: any single point would soon be wrong.
 function Coordinates.Attach(vendors)
     local count = 0
     for _, vendor in ipairs(vendors) do
-        vendor.uiMapId, vendor.x, vendor.y = Coordinates.Get(vendor.npcId)
+        vendor.uiMapId, vendor.x, vendor.y = nil, nil, nil
+        if not vendor.isWandering then
+            vendor.uiMapId, vendor.x, vendor.y = Coordinates.Get(vendor.npcId)
+        end
         if vendor.uiMapId then count = count + 1 end
     end
     return count

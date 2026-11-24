@@ -24,9 +24,28 @@ function Format.VendorName(vendor)
     return string.format(L.NPC_FALLBACK, vendor.npcId), false
 end
 
--- Zone, with the vendor's faction for recipes only the other faction can obtain.
+-- Every zone of a wandering vendor, without repeats, like WT's "Sold in" line.
+local function wanderingZones(areaIds)
+    local names, seen = {}, {}
+    for _, areaId in ipairs(areaIds) do
+        local name = C_Map.GetAreaInfo(areaId)
+        if type(name) == "string" and name ~= "" and not seen[name] then
+            seen[name] = true
+            tinsert(names, name)
+        end
+    end
+    return #names > 0 and table.concat(names, ", ") or L.UNKNOWN_ZONE
+end
+
+-- Zone, marked for wandering vendors, with the vendor's faction for recipes only the other
+-- faction can obtain.
 function Format.VendorZone(vendor)
-    local zone = Format.ZoneName(vendor.areaId)
+    local zone
+    if vendor.isWandering then
+        zone = string.format("%s (%s)", wanderingZones(vendor.areaIds or {}), L.WANDERING)
+    else
+        zone = Format.ZoneName(vendor.areaId)
+    end
     if vendor.isOtherFaction and vendor.faction then
         zone = string.format("%s (%s)", zone, L["FACTION_" .. vendor.faction])
     end

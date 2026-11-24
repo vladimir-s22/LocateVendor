@@ -18,7 +18,19 @@ local function hasVendorSource(data)
     return false
 end
 
--- Returns an array of { npcId, areaId, faction, isOtherFaction }; empty when nothing applies.
+-- WT lists a wandering vendor under `areas` instead of `area`; like WT, ids <= 0 are skipped.
+local function areaIds(vendor)
+    if type(vendor.areas) ~= "table" then return nil end
+    local ids = {}
+    for _, areaId in ipairs(vendor.areas) do
+        areaId = tonumber(areaId)
+        if areaId and areaId > 0 then tinsert(ids, areaId) end
+    end
+    return ids
+end
+
+-- Returns an array of { npcId, areaId, areaIds, isWandering, faction, isOtherFaction }; empty when
+-- nothing applies. A wandering vendor has areaIds (possibly empty) instead of areaId.
 function VendorFilter.ForRow(data)
     local result = {}
     local recipe = type(data) == "table" and data.recipe
@@ -42,9 +54,12 @@ function VendorFilter.ForRow(data)
             end
             if include then
                 seen[npcId] = true
+                local wanderingAreas = areaIds(vendor)
                 tinsert(result, {
                     npcId = npcId,
-                    areaId = tonumber(vendor.area),
+                    areaId = not wanderingAreas and tonumber(vendor.area) or nil,
+                    areaIds = wanderingAreas,
+                    isWandering = wanderingAreas ~= nil,
                     faction = vendor.faction,
                     isOtherFaction = otherFaction ~= nil,
                 })
