@@ -14,7 +14,11 @@ read_globals = {
     "GetMouseFocus",
     "GetRealZoneText",
     "GetSubZoneText",
+    "IsAltKeyDown",
+    "IsControlKeyDown",
     "IsInInstance",
+    "IsShiftKeyDown",
+    "PlaySound",
     "UnitFactionGroup",
     "UnitGUID",
     "UnitName",
@@ -38,6 +42,7 @@ read_globals = {
     -- enums and constants
     "Enum",
     "LE_ITEM_CLASS_RECIPE",
+    "SOUNDKIT",
     "UNKNOWNOBJECT",
     "WOW_PROJECT_ID",
 

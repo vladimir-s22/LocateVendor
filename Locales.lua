@@ -7,6 +7,9 @@ local strings = {
         UNKNOWN_ZONE = "Unknown zone",
         FACTION_Alliance = "Alliance",
         FACTION_Horde = "Horde",
+        HINT_WAYPOINT = "Click: set a waypoint",
+        HINT_MENU = "Click: choose a vendor",
+        NO_COORDINATES = "coordinates not collected",
     },
     ruRU = {
         VENDORS_HEADER = "Торговцы:",
@@ -14,6 +17,9 @@ local strings = {
         UNKNOWN_ZONE = "Неизвестная зона",
         FACTION_Alliance = "Альянс",
         FACTION_Horde = "Орда",
+        HINT_WAYPOINT = "ЛКМ: поставить метку",
+        HINT_MENU = "ЛКМ: выбрать торговца",
+        NO_COORDINATES = "координаты не собраны",
     },
 }
 

@@ -1,10 +1,11 @@
 local _, ns = ...
-local L, Bridge, NpcNames, VendorFilter = ns.L, ns.Bridge, ns.NpcNames, ns.VendorFilter
+local L, Bridge, NpcNames, Format, RowClick = ns.L, ns.Bridge, ns.NpcNames, ns.Format, ns.RowClick
 
 local Tooltip = {}
 ns.Tooltip = Tooltip
 
 local HEADER_COLOR = { 1, 0.82, 0 }
+local HINT_COLOR = { 0.4, 0.8, 1 }
 local NAME_COLOR = "ffffffff"
 local PENDING_NAME_COLOR = "ff9d9d9d"
 local ZONE_COLOR = "ffb0b0b0"
@@ -22,39 +23,29 @@ local function invalidate()
     generation = generation + 1
 end
 
-local function colorize(text, color)
-    return "|c" .. color .. text .. "|r"
+local function vendorLine(vendor)
+    local name, known = Format.VendorName(vendor)
+    local label = Format.Colorize(name, known and NAME_COLOR or PENDING_NAME_COLOR)
+    if vendor.uiMapId then label = Format.MAP_ICON .. " " .. label end
+    return "  " .. label .. " " .. Format.Colorize("— " .. Format.VendorZone(vendor), ZONE_COLOR)
 end
 
-local function zoneName(areaId)
-    local name = areaId and areaId > 0 and C_Map.GetAreaInfo(areaId)
-    if type(name) == "string" and name ~= "" then return name end
-    return L.UNKNOWN_ZONE
-end
-
-local function vendorLine(vendor, name)
-    local label = name
-        and colorize(name, NAME_COLOR)
-        or colorize(string.format(L.NPC_FALLBACK, vendor.npcId), PENDING_NAME_COLOR)
-    local zone = zoneName(vendor.areaId)
-    if vendor.isOtherFaction and vendor.faction then
-        zone = string.format("%s (%s)", zone, L["FACTION_" .. vendor.faction])
-    end
-    return "  " .. label .. " " .. colorize("— " .. zone, ZONE_COLOR)
-end
-
-function Tooltip.Render(tooltip, tooltipData)
-    local row, data = Bridge.GetRecipeRow(tooltip, tooltipData and tooltipData.id)
-    if not row then return end
+-- Bridge calls this for WT recipe rows only, after WT's own lines.
+function Tooltip.Render(tooltip, tooltipData, row, data)
     invalidate()
-    local vendors = VendorFilter.ForRow(data)
+    local vendors = RowClick.Vendors(data)
     if #vendors == 0 then return end
     local waiting = {}
     tooltip:AddLine(L.VENDORS_HEADER, unpack(HEADER_COLOR))
     for _, vendor in ipairs(vendors) do
-        local name = NpcNames.Resolve(vendor.npcId)
-        if not name and NpcNames.IsPending(vendor.npcId) then waiting[vendor.npcId] = true end
-        tooltip:AddLine(vendorLine(vendor, name), 1, 1, 1, true)
+        tooltip:AddLine(vendorLine(vendor), 1, 1, 1, true)
+        if NpcNames.IsPending(vendor.npcId) then waiting[vendor.npcId] = true end
+    end
+    local action = RowClick.Action(vendors)
+    if action == RowClick.WAYPOINT then
+        tooltip:AddLine(L.HINT_WAYPOINT, unpack(HINT_COLOR))
+    elseif action == RowClick.MENU then
+        tooltip:AddLine(L.HINT_MENU, unpack(HINT_COLOR))
     end
     context = { generation = generation, row = row, spellId = tooltipData.id, waiting = waiting }
 end
